@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Audio Receiver: ALSA."""
+"""Audio Receiver: PyAudio."""
 
 from __future__ import annotations
 
@@ -21,58 +21,60 @@ import wave
 from threading import Lock
 from typing import BinaryIO
 
-import alsaaudio
+import pyaudio
 import librosa
 import numpy
 
 from .base import BaseAudioReceiver
 
-__all__ = ["AlsaReceiver"]
+__all__ = ["PyAudioReceiver"]
 
 
-class AlsaReceiver(BaseAudioReceiver):
-    """Class for receiving audio from ALSA (Advanced Linux Sound Architecture).
-
-    For more information about the terminology, see [the official documentation](
-    https://larsimmisch.github.io/pyalsaaudio/terminology.html).
+class PyAudioReceiver(BaseAudioReceiver):
+    """Class for receiving audio from PyAudio (cross-platform audio library).
+    
+    This receiver works on macOS, Windows, and Linux using PortAudio.
     """
 
     def __init__(
         self,
-        device: str,
-        chunk_size: float,
-        target_sample_rate: int,
+        device_index: int | None = None,
+        chunk_size: float = 1.0,
+        target_sample_rate: int = 16000,
         *,
-        periodsize: int = 1024,
+        frames_per_buffer: int = 1024,
     ) -> None:
         """Initialize the receiver.
 
         Args:
-            device: ALSA device name.
+            device_index: PyAudio device index (None for default input device).
             chunk_size: Length of each chunk in seconds.
             target_sample_rate: Sample rate of audio samples in Hertz.
-            periodsize: Count of frames per period.
+            frames_per_buffer: Number of frames per buffer.
         """
         super().__init__()
 
         self.chunk_size = chunk_size
         self.target_sample_rate = target_sample_rate
-
+        self.frames_per_buffer = frames_per_buffer
         self.channels = 1
-        self.pcm = alsaaudio.PCM(
-            type=alsaaudio.PCM_CAPTURE,
-            format=alsaaudio.PCM_FORMAT_S16_LE,
+        self.format = pyaudio.paInt16
+
+        self.pyaudio = pyaudio.PyAudio()
+        self.stream = self.pyaudio.open(
+            format=self.format,
             channels=self.channels,
-            periodsize=periodsize,
             rate=self.target_sample_rate,
-            device=device,
+            input=True,
+            input_device_index=device_index,
+            frames_per_buffer=frames_per_buffer,
         )
 
-        self.iterations = self.chunk_size / (periodsize / self.target_sample_rate)
-        self.pcm_lock = Lock()
+        self.iterations = int(self.chunk_size / (frames_per_buffer / self.target_sample_rate))
+        self.stream_lock = Lock()
 
     def _do_receive(self) -> str | BinaryIO | numpy.ndarray | None:
-        """Receive data from ALSA device.
+        """Receive data from PyAudio device.
 
         Returns:
             Data, or None if receiver is stopped.
@@ -83,13 +85,13 @@ class AlsaReceiver(BaseAudioReceiver):
             with tempfile.NamedTemporaryFile() as temp_audio_file:
                 with wave.open(temp_audio_file.name, mode="wb") as wavefile:
                     wavefile.setnchannels(self.channels)
-                    wavefile.setsampwidth(2)  # PCM_FORMAT_S16_LE
+                    wavefile.setsampwidth(2)  # paInt16
                     wavefile.setframerate(self.target_sample_rate)
 
                     i = 1
                     while i < self.iterations and not self.stopped.is_set():
-                        with self.pcm_lock:
-                            data = self.pcm.read()[1]
+                        with self.stream_lock:
+                            data = self.stream.read(self.frames_per_buffer)
                         wavefile.writeframes(data)
                         i += 1
 
@@ -106,5 +108,7 @@ class AlsaReceiver(BaseAudioReceiver):
         return audio
 
     def _do_close(self) -> None:
-        with self.pcm_lock:
-            self.pcm.close()
+        with self.stream_lock:
+            self.stream.stop_stream()
+            self.stream.close()
+            self.pyaudio.terminate()

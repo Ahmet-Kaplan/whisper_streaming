@@ -14,7 +14,26 @@
 
 """Package important all out-of-the-box implemented AudioReceiver."""
 
-from .alsa import AlsaReceiver
+from .audio import AudioReceiver, get_default_audio_receiver
 from .file import FileReceiver
 
-__all__ = ["AlsaReceiver", "FileReceiver"]
+# Platform-specific receivers (available for direct import if needed)
+try:
+    from .alsa import AlsaReceiver
+    _ALSA_AVAILABLE = True
+except ImportError:
+    _ALSA_AVAILABLE = False
+
+try:
+    from .pyaudio_receiver import PyAudioReceiver
+    _PYAUDIO_AVAILABLE = True
+except ImportError:
+    _PYAUDIO_AVAILABLE = False
+
+__all__ = ["AudioReceiver", "FileReceiver", "get_default_audio_receiver"]
+
+# Add platform-specific receivers to __all__ if available
+if _ALSA_AVAILABLE:
+    __all__.append("AlsaReceiver")
+if _PYAUDIO_AVAILABLE:
+    __all__.append("PyAudioReceiver")

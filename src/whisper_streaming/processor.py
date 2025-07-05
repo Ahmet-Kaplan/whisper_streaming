@@ -20,7 +20,20 @@ from queue import Empty, Queue
 from threading import Event, Thread
 from typing import BinaryIO
 
-from mosestokenizer import MosesTokenizer
+try:
+    from mosestokenizer import MosesTokenizer
+    _MOSES_AVAILABLE = True
+    _TOKENIZER_TYPE = "mosestokenizer"
+except ImportError:
+    try:
+        from sacremoses import MosesTokenizer
+        _MOSES_AVAILABLE = True
+        _TOKENIZER_TYPE = "sacremoses"
+    except ImportError:
+        _MOSES_AVAILABLE = False
+        _TOKENIZER_TYPE = None
+        MosesTokenizer = None
+
 import numpy
 
 from .base import ASRBase, Word, Backend
@@ -335,11 +348,24 @@ supported:
 Invoked with: <mosestokenizer.lib._mosestokenizer.MosesTokenizerParameters object at 
 0x792f3d9b81f0>, None
         """
-        self._tokenizer = (
-            MosesTokenizer(self.processor_config.language)
-            if isinstance(self.processor_config.audio_trimming, SentenceTrimming)
-            else None
-        )
+        if isinstance(self.processor_config.audio_trimming, SentenceTrimming):
+            if _MOSES_AVAILABLE and self.processor_config.language is not None:
+                self._tokenizer = MosesTokenizer(self.processor_config.language)
+                self.logger.info(f"Using {_TOKENIZER_TYPE} for sentence trimming")
+            else:
+                if not _MOSES_AVAILABLE:
+                    self.logger.warning(
+                        "MosesTokenizer not available. Sentence trimming will be disabled. "
+                        "Install with: pip install mosestokenizer or pip install sacremoses"
+                    )
+                if self.processor_config.language is None:
+                    self.logger.warning(
+                        "No language specified for sentence trimming. "
+                        "Sentence trimming will be disabled."
+                    )
+                self._tokenizer = None
+        else:
+            self._tokenizer = None
 
         ASRBase.check_support_sampling_rate(
             backend, self.processor_config.sampling_rate

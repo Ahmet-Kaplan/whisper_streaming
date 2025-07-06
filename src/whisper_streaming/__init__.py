@@ -22,6 +22,12 @@ from .processor import (
     TimeTrimming,
     SentenceTrimming,
 )
+from .translator import (
+    BaseTranslator,
+    TranslationConfig,
+    TranslatedWord,
+    get_default_translator,
+)
 
 __all__ = [
     "ASRProcessor",
@@ -31,4 +37,9 @@ __all__ = [
     "TimeTrimming",
     "SentenceTrimming",
     "Backend",
+    # Translation support
+    "BaseTranslator",
+    "TranslationConfig",
+    "TranslatedWord",
+    "get_default_translator",
 ]

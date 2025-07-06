@@ -16,5 +16,6 @@
 
 from .print import PrintSender
 from .websocket import WebsocketClientSender
+from .translation import ConsoleTranslationSender, TranslationOutputSender
 
-__all__ = ["PrintSender", "WebsocketClientSender"]
+__all__ = ["PrintSender", "WebsocketClientSender", "ConsoleTranslationSender", "TranslationOutputSender"]

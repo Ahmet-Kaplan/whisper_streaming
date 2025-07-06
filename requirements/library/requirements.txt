@@ -4,3 +4,4 @@ pyaudio
 pyalsaaudio; sys_platform == "linux"
 websockets
 sacremoses
+googletrans-py

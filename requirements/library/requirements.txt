@@ -5,3 +5,9 @@ pyalsaaudio; sys_platform == "linux"
 websockets
 sacremoses
 googletrans-py
+# TTS dependencies
+edge-tts
+gtts
+pyttsx3
+# TTS[all] - uncomment for Coqui TTS (large download)
+# TTS

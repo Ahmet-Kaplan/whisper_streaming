@@ -28,6 +28,13 @@ from .translator import (
     TranslatedWord,
     get_default_translator,
 )
+from .tts import (
+    TTSConfig,
+    TTSEngine,
+    BaseTTS,
+    get_best_tts_for_turkish,
+    synthesize_turkish,
+)
 
 __all__ = [
     "ASRProcessor",
@@ -42,4 +49,10 @@ __all__ = [
     "TranslationConfig",
     "TranslatedWord",
     "get_default_translator",
+    # TTS support
+    "TTSConfig",
+    "TTSEngine",
+    "BaseTTS",
+    "get_best_tts_for_turkish",
+    "synthesize_turkish",
 ]

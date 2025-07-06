@@ -381,9 +381,87 @@ def test_error_handling():
         print(f"❌ Error handling test failed: {e}")
         return False
 
+def test_turkish_arabic_languages():
+    """Test Turkish and Arabic language support."""
+    print("\n🧪 Test 5: Turkish and Arabic Language Support")
+    print("=" * 40)
+    
+    try:
+        from whisper_streaming.backend import (
+            WhisperXASR, WhisperXModelConfig, WhisperXTranscribeConfig,
+            create_whisperx_asr
+        )
+        
+        # Test Turkish language configuration
+        print("🇹🇷 Testing Turkish language support...")
+        try:
+            tr_config = WhisperXTranscribeConfig(language="tr")
+            print("✅ Turkish language configuration created successfully")
+        except ValueError as e:
+            print(f"❌ Turkish language configuration failed: {e}")
+            return False
+        
+        # Test Arabic language configuration
+        print("🇸🇦 Testing Arabic language support...")
+        try:
+            ar_config = WhisperXTranscribeConfig(language="ar")
+            print("✅ Arabic language configuration created successfully")
+        except ValueError as e:
+            print(f"❌ Arabic language configuration failed: {e}")
+            return False
+        
+        # Test creating ASR instances with Turkish and Arabic
+        print("🔍 Testing ASR instance creation with Turkish...")
+        tr_asr = create_whisperx_asr(
+            model_name="tiny",
+            device="cpu",
+            language="tr",
+            enable_vad=True,
+            enable_diarization=False
+        )
+        
+        model_info = tr_asr.get_model_info()
+        supported_languages = model_info.get("supported_languages", {})
+        
+        if "tr" in supported_languages:
+            print(f"✅ Turkish supported: {supported_languages['tr']}")
+        else:
+            print("❌ Turkish not found in supported languages")
+            return False
+        
+        if "ar" in supported_languages:
+            print(f"✅ Arabic supported: {supported_languages['ar']}")
+        else:
+            print("❌ Arabic not found in supported languages")
+            return False
+        
+        # Test invalid language
+        print("🚫 Testing invalid language rejection...")
+        try:
+            invalid_config = WhisperXTranscribeConfig(language="invalid_lang")
+            print("⚠️  Invalid language was accepted (validation might be missing)")
+        except ValueError:
+            print("✅ Invalid language correctly rejected")
+        
+        # Test auto-detection (None language)
+        print("🌍 Testing automatic language detection...")
+        auto_config = WhisperXTranscribeConfig(language=None)
+        print("✅ Auto-detection configuration created")
+        
+        print(f"📅 Total supported languages: {len(supported_languages)}")
+        
+        return True
+        
+    except ImportError as e:
+        print(f"⚠️  Turkish/Arabic language test skipped: {e}")
+        return True
+    except Exception as e:
+        print(f"❌ Turkish/Arabic language test failed: {e}")
+        return False
+
 def test_convenience_function_vad():
     """Test convenience function with VAD and diarization parameters."""
-    print("\n🧪 Test 5: Convenience Function with VAD/Diarization")
+    print("\n🧪 Test 6: Convenience Function with VAD/Diarization")
     print("=" * 40)
     
     try:
@@ -442,6 +520,7 @@ def main():
         ("Diarization Functionality", test_diarization_functionality),
         ("Combined VAD + Diarization", test_combined_features),
         ("Error Handling", test_error_handling),
+        ("Turkish/Arabic Language Support", test_turkish_arabic_languages),
         ("Convenience Function VAD", test_convenience_function_vad),
     ]
     

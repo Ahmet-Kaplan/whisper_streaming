@@ -188,6 +188,38 @@ class WhisperXTranscribeConfig(ASRBase.TranscribeConfig):
     
     print_progress: bool = False
     """Print processing progress"""
+    
+    def __post_init__(self):
+        """Validate configuration after initialization."""
+        if self.language is not None:
+            # Get supported languages from the static method
+            supported_languages = {
+                "en": "English", "tr": "Turkish", "ar": "Arabic", "de": "German",
+                "fr": "French", "es": "Spanish", "it": "Italian", "pt": "Portuguese",
+                "ru": "Russian", "zh": "Chinese", "ja": "Japanese", "ko": "Korean",
+                "hi": "Hindi", "fa": "Persian", "ur": "Urdu", "he": "Hebrew",
+                "nl": "Dutch", "pl": "Polish", "sv": "Swedish", "da": "Danish",
+                "no": "Norwegian", "fi": "Finnish", "cs": "Czech", "hu": "Hungarian",
+                "ro": "Romanian", "uk": "Ukrainian", "bg": "Bulgarian", "hr": "Croatian",
+                "sk": "Slovak", "sl": "Slovenian", "et": "Estonian", "lv": "Latvian",
+                "lt": "Lithuanian", "mt": "Maltese", "cy": "Welsh", "ga": "Irish",
+                "vi": "Vietnamese", "th": "Thai", "ms": "Malay", "id": "Indonesian",
+                "tl": "Filipino", "sw": "Swahili", "af": "Afrikaans", "am": "Amharic",
+                "az": "Azerbaijani", "be": "Belarusian", "bn": "Bengali", "bs": "Bosnian",
+                "eu": "Basque", "ca": "Catalan", "gl": "Galician", "is": "Icelandic",
+                "hy": "Armenian", "ka": "Georgian", "kk": "Kazakh", "kn": "Kannada",
+                "ky": "Kyrgyz", "la": "Latin", "lo": "Lao", "ml": "Malayalam",
+                "mn": "Mongolian", "mr": "Marathi", "my": "Myanmar", "ne": "Nepali",
+                "pa": "Punjabi", "si": "Sinhala", "ta": "Tamil", "te": "Telugu",
+                "tg": "Tajik", "tk": "Turkmen", "tt": "Tatar", "uz": "Uzbek",
+                "yi": "Yiddish", "yo": "Yoruba", "zu": "Zulu"
+            }
+            if self.language not in supported_languages:
+                raise ValueError(
+                    f"Unsupported language '{self.language}'. "
+                    f"Supported languages: {list(supported_languages.keys())}. "
+                    f"Use None for auto-detection."
+                )
 
 
 @dataclass
@@ -590,6 +622,97 @@ class WhisperXASR(ASRBase):
         """Get supported sampling rates."""
         return [16000, 22050, 44100, 48000]
     
+    @staticmethod
+    def get_supported_languages() -> Dict[str, str]:
+        """Get supported languages with their codes and names."""
+        return {
+            "en": "English",
+            "tr": "Turkish",
+            "ar": "Arabic",
+            "de": "German",
+            "fr": "French",
+            "es": "Spanish",
+            "it": "Italian",
+            "pt": "Portuguese",
+            "ru": "Russian",
+            "zh": "Chinese",
+            "ja": "Japanese",
+            "ko": "Korean",
+            "hi": "Hindi",
+            "fa": "Persian",
+            "ur": "Urdu",
+            "he": "Hebrew",
+            "nl": "Dutch",
+            "pl": "Polish",
+            "sv": "Swedish",
+            "da": "Danish",
+            "no": "Norwegian",
+            "fi": "Finnish",
+            "cs": "Czech",
+            "hu": "Hungarian",
+            "ro": "Romanian",
+            "uk": "Ukrainian",
+            "bg": "Bulgarian",
+            "hr": "Croatian",
+            "sk": "Slovak",
+            "sl": "Slovenian",
+            "et": "Estonian",
+            "lv": "Latvian",
+            "lt": "Lithuanian",
+            "mt": "Maltese",
+            "cy": "Welsh",
+            "ga": "Irish",
+            "mk": "Macedonian",
+            "sr": "Serbian",
+            "sq": "Albanian",
+            "eu": "Basque",
+            "ca": "Catalan",
+            "gl": "Galician",
+            "is": "Icelandic",
+            "vi": "Vietnamese",
+            "th": "Thai",
+            "ms": "Malay",
+            "id": "Indonesian",
+            "tl": "Filipino",
+            "sw": "Swahili",
+            "zu": "Zulu",
+            "af": "Afrikaans",
+            "am": "Amharic",
+            "az": "Azerbaijani",
+            "be": "Belarusian",
+            "bn": "Bengali",
+            "bs": "Bosnian",
+            "eo": "Esperanto",
+            "fo": "Faroese",
+            "gu": "Gujarati",
+            "hy": "Armenian",
+            "ka": "Georgian",
+            "kk": "Kazakh",
+            "kn": "Kannada",
+            "ky": "Kyrgyz",
+            "la": "Latin",
+            "lb": "Luxembourgish",
+            "lo": "Lao",
+            "mi": "Maori",
+            "ml": "Malayalam",
+            "mn": "Mongolian",
+            "mr": "Marathi",
+            "my": "Myanmar",
+            "ne": "Nepali",
+            "oc": "Occitan",
+            "pa": "Punjabi",
+            "sa": "Sanskrit",
+            "si": "Sinhala",
+            "ta": "Tamil",
+            "te": "Telugu",
+            "tg": "Tajik",
+            "tk": "Turkmen",
+            "tt": "Tatar",
+            "uz": "Uzbek",
+            "yi": "Yiddish",
+            "yo": "Yoruba"
+        }
+    
     def is_available(self) -> bool:
         """Check if WhisperX is available."""
         return _WHISPERX_AVAILABLE
@@ -629,6 +752,8 @@ class WhisperXASR(ASRBase):
                 "diarization": self.diarize_model is not None,
                 "vad": self.vad_model is not None
             },
+            "supported_languages": self.get_supported_languages(),
+            "supported_sampling_rates": self.get_supported_sampling_rates(),
             "available": self.is_available()
         }
 

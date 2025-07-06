@@ -10,5 +10,4 @@ edge-tts
 gtts
 pyttsx3
 piper-tts
-# TTS[all] - uncomment for Coqui TTS (large download)
-# TTS
+f5-tts

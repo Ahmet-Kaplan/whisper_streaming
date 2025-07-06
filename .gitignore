@@ -11,3 +11,10 @@ __pycache__
 # Documentation
 docs/_build
 docs/apidoc
+
+# F5-TTS cloned repository
+F5-TTS/
+
+# Voice cloning files
+voice_config_*.txt
+*.wav

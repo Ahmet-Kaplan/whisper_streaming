@@ -46,13 +46,9 @@ except ImportError:
     _PYTTSX3_AVAILABLE = False
     pyttsx3 = None
 
-try:
-    from TTS.api import TTS as CoquiTTS
-    _COQUI_TTS_AVAILABLE = True
-except (ImportError, ValueError, Exception) as e:
-    # Coqui TTS can fail for various reasons (missing deps, numpy incompatibility, etc.)
-    _COQUI_TTS_AVAILABLE = False
-    CoquiTTS = None
+# Coqui TTS removed - using F5-TTS instead
+_COQUI_TTS_AVAILABLE = False
+CoquiTTS = None
 
 try:
     from piper import PiperVoice
@@ -61,6 +57,13 @@ except ImportError:
     _PIPER_TTS_AVAILABLE = False
     PiperVoice = None
 
+try:
+    from f5_tts.api import F5TTS
+    _F5_TTS_AVAILABLE = True
+except ImportError:
+    _F5_TTS_AVAILABLE = False
+    F5TTS = None
+
 __all__ = [
     "TTSConfig",
     "TTSEngine",
@@ -68,8 +71,8 @@ __all__ = [
     "EdgeTTS", 
     "GoogleTTS",
     "SystemTTS",
-    "CoquiTTS",
     "PiperTTS",
+    "F5TTSEngine",
     "get_best_tts_for_turkish",
     "get_available_engines",
 ]
@@ -80,8 +83,8 @@ class TTSEngine(Enum):
     EDGE_TTS = "edge_tts"
     GOOGLE_TTS = "gtts" 
     SYSTEM_TTS = "system"
-    COQUI_TTS = "coqui"
     PIPER_TTS = "piper"
+    F5_TTS = "f5_tts"
     AUTO = "auto"
 
 
@@ -121,9 +124,6 @@ class TTSConfig:
     edge_voice_preference: str = "female"
     """Preference for Edge TTS voice (male/female)"""
     
-    coqui_model: str = "tts_models/tr/common-voice/glow-tts"
-    """Coqui TTS model for Turkish"""
-    
     # Piper TTS options
     piper_model: str = "tr_TR-dfki-medium"
     """Piper TTS model for Turkish"""
@@ -133,6 +133,22 @@ class TTSConfig:
     
     piper_download_dir: Optional[str] = None
     """Directory to download Piper models"""
+    
+    # F5-TTS options
+    f5_model: str = "F5TTS_v1_Base"
+    """F5-TTS model name"""
+    
+    f5_ref_audio: Optional[str] = None
+    """Reference audio file for voice cloning"""
+    
+    f5_ref_text: Optional[str] = None
+    """Reference text matching the reference audio"""
+    
+    f5_device: str = "auto"
+    """Device for F5-TTS inference (auto, cpu, cuda)"""
+    
+    f5_seed: int = 42
+    """Random seed for F5-TTS generation"""
 
 
 class BaseTTS(ABC):
@@ -394,51 +410,6 @@ class SystemTTS(BaseTTS):
             raise
 
 
-class CoquiTTSEngine(BaseTTS):
-    """Coqui TTS implementation for Turkish."""
-    
-    def _setup(self) -> None:
-        """Setup Coqui TTS."""
-        if not _COQUI_TTS_AVAILABLE:
-            raise ImportError("TTS is required. Install with: pip install TTS")
-        
-        try:
-            # Initialize with Turkish model
-            self.tts = CoquiTTS(model_name=self.config.coqui_model)
-            self.logger.info(f"Initialized Coqui TTS with model: {self.config.coqui_model}")
-        except Exception as e:
-            self.logger.error(f"Failed to initialize Coqui TTS: {e}")
-            raise
-    
-    def is_available(self) -> bool:
-        """Check if Coqui TTS is available."""
-        return _COQUI_TTS_AVAILABLE
-    
-    def synthesize(self, text: str, output_path: Optional[Path] = None) -> Path:
-        """Synthesize speech using Coqui TTS.
-        
-        Args:
-            text: Text to synthesize
-            output_path: Optional output file path
-            
-        Returns:
-            Path to generated audio file
-        """
-        if output_path is None:
-            output_path = self.get_temp_file(".wav")
-        
-        # Preprocess Turkish text
-        processed_text = self.preprocess_turkish_text(text)
-        
-        try:
-            self.tts.tts_to_file(text=processed_text, file_path=str(output_path))
-            self.logger.debug(f"Coqui TTS synthesis completed: {output_path}")
-            return output_path
-        except Exception as e:
-            self.logger.error(f"Coqui TTS synthesis failed: {e}")
-            raise
-
-
 class PiperTTS(BaseTTS):
     """Piper TTS implementation for Turkish."""
     
@@ -544,6 +515,93 @@ class PiperTTS(BaseTTS):
             raise
 
 
+class F5TTSEngine(BaseTTS):
+    """F5-TTS implementation for high-quality speech synthesis."""
+    
+    def _setup(self) -> None:
+        """Setup F5-TTS."""
+        if not _F5_TTS_AVAILABLE:
+            raise ImportError("f5-tts is required. Install with: pip install f5-tts")
+        
+        try:
+            # Initialize F5-TTS model
+            self.f5tts = F5TTS(
+                model=self.config.f5_model,
+                ckpt_file="",  # Will use default checkpoint
+                vocab_file="",  # Will use default vocab
+                device=self.config.f5_device if self.config.f5_device != "auto" else None
+            )
+            
+            # Set up reference audio and text if provided
+            self.ref_audio = self.config.f5_ref_audio
+            self.ref_text = self.config.f5_ref_text
+            
+            # If no reference provided, use default voice
+            if not self.ref_audio or not self.ref_text:
+                self.logger.info("No reference audio/text provided, using built-in example")
+                # Use a built-in example for demonstration
+                # In practice, you'd want to provide proper Turkish reference audio
+                from importlib.resources import files
+                try:
+                    self.ref_audio = str(files("f5_tts").joinpath("infer/examples/basic/basic_ref_en.wav"))
+                    self.ref_text = "Some call me nature, others call me mother nature."
+                    self.logger.info("Using built-in English reference for demonstration")
+                except:
+                    self.ref_audio = None
+                    self.ref_text = None
+                    self.logger.warning("No built-in reference found - please provide ref_audio and ref_text")
+            
+            self.logger.info(f"Initialized F5-TTS with model: {self.config.f5_model}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize F5-TTS: {e}")
+            raise
+    
+    def is_available(self) -> bool:
+        """Check if F5-TTS is available."""
+        return _F5_TTS_AVAILABLE
+    
+    def synthesize(self, text: str, output_path: Optional[Path] = None) -> Path:
+        """Synthesize speech using F5-TTS.
+        
+        Args:
+            text: Text to synthesize
+            output_path: Optional output file path
+            
+        Returns:
+            Path to generated audio file
+        """
+        if output_path is None:
+            output_path = self.get_temp_file(".wav")
+        
+        # Preprocess Turkish text
+        processed_text = self.preprocess_turkish_text(text)
+        
+        try:
+            # Check if we have reference audio and text
+            if not self.ref_audio or not self.ref_text:
+                raise ValueError("F5-TTS requires reference audio and text. Please provide f5_ref_audio and f5_ref_text in config.")
+            
+            # Generate audio using F5-TTS
+            wav, sr, spec = self.f5tts.infer(
+                ref_file=self.ref_audio,
+                ref_text=self.ref_text,
+                gen_text=processed_text,
+                remove_silence=True,
+                cross_fade_duration=0.15,
+                speed=self.config.speed,
+                seed=self.config.f5_seed,
+                file_wave=str(output_path)  # F5TTS will save directly to file
+            )
+            
+            self.logger.debug(f"F5-TTS synthesis completed: {output_path}")
+            return output_path
+            
+        except Exception as e:
+            self.logger.error(f"F5-TTS synthesis failed: {e}")
+            raise
+
+
 def get_available_engines() -> list[TTSEngine]:
     """Get list of available TTS engines.
     
@@ -558,10 +616,10 @@ def get_available_engines() -> list[TTSEngine]:
         available.append(TTSEngine.GOOGLE_TTS)
     if _PYTTSX3_AVAILABLE:
         available.append(TTSEngine.SYSTEM_TTS)
-    if _COQUI_TTS_AVAILABLE:
-        available.append(TTSEngine.COQUI_TTS)
     if _PIPER_TTS_AVAILABLE:
         available.append(TTSEngine.PIPER_TTS)
+    if _F5_TTS_AVAILABLE:
+        available.append(TTSEngine.F5_TTS)
     
     return available
 
@@ -582,11 +640,11 @@ def get_best_tts_for_turkish(prefer_offline: bool = False) -> tuple[TTSEngine, s
     
     # Priority order based on research
     if prefer_offline:
-        # Offline priority (Piper is excellent for Turkish and lightweight)
-        if TTSEngine.PIPER_TTS in available:
+        # Offline priority (F5-TTS and Piper are excellent for Turkish)
+        if TTSEngine.F5_TTS in available:
+            return TTSEngine.F5_TTS, "State-of-the-art offline quality with voice cloning"
+        elif TTSEngine.PIPER_TTS in available:
             return TTSEngine.PIPER_TTS, "Excellent offline quality and fast for Turkish"
-        elif TTSEngine.COQUI_TTS in available:
-            return TTSEngine.COQUI_TTS, "Good offline quality for Turkish (heavier)"
         elif TTSEngine.SYSTEM_TTS in available:
             return TTSEngine.SYSTEM_TTS, "Basic offline option"
         elif TTSEngine.EDGE_TTS in available:
@@ -594,15 +652,15 @@ def get_best_tts_for_turkish(prefer_offline: bool = False) -> tuple[TTSEngine, s
         elif TTSEngine.GOOGLE_TTS in available:
             return TTSEngine.GOOGLE_TTS, "Good quality (requires internet)"
     else:
-        # Online priority (best quality)
-        if TTSEngine.EDGE_TTS in available:
-            return TTSEngine.EDGE_TTS, "Best overall quality for Turkish"
+        # Quality priority (best overall quality)
+        if TTSEngine.F5_TTS in available:
+            return TTSEngine.F5_TTS, "Best overall quality with voice cloning capabilities"
+        elif TTSEngine.EDGE_TTS in available:
+            return TTSEngine.EDGE_TTS, "Excellent quality for Turkish (requires internet)"
         elif TTSEngine.PIPER_TTS in available:
             return TTSEngine.PIPER_TTS, "Excellent offline quality and fast"
         elif TTSEngine.GOOGLE_TTS in available:
             return TTSEngine.GOOGLE_TTS, "Good quality and reliability"
-        elif TTSEngine.COQUI_TTS in available:
-            return TTSEngine.COQUI_TTS, "Good offline quality"
         elif TTSEngine.SYSTEM_TTS in available:
             return TTSEngine.SYSTEM_TTS, "Basic but available"
     
@@ -626,10 +684,10 @@ def create_tts_engine(engine: TTSEngine, config: TTSConfig) -> BaseTTS:
         return GoogleTTS(config)
     elif engine == TTSEngine.SYSTEM_TTS:
         return SystemTTS(config)
-    elif engine == TTSEngine.COQUI_TTS:
-        return CoquiTTSEngine(config)
     elif engine == TTSEngine.PIPER_TTS:
         return PiperTTS(config)
+    elif engine == TTSEngine.F5_TTS:
+        return F5TTSEngine(config)
     elif engine == TTSEngine.AUTO:
         best_engine, reason = get_best_tts_for_turkish()
         logging.getLogger(__name__).info(f"Auto-selected {best_engine.value}: {reason}")

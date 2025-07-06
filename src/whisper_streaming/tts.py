@@ -46,9 +46,13 @@ except ImportError:
     _PYTTSX3_AVAILABLE = False
     pyttsx3 = None
 
-# Coqui TTS removed - using F5-TTS instead
-_COQUI_TTS_AVAILABLE = False
-CoquiTTS = None
+try:
+    from TTS.api import TTS as CoquiTTS
+    _COQUI_TTS_AVAILABLE = True
+except (ImportError, ValueError, Exception) as e:
+    # Coqui TTS can fail for various reasons (missing deps, numpy incompatibility, etc.)
+    _COQUI_TTS_AVAILABLE = False
+    CoquiTTS = None
 
 try:
     from piper import PiperVoice
@@ -71,6 +75,7 @@ __all__ = [
     "EdgeTTS", 
     "GoogleTTS",
     "SystemTTS",
+    "CoquiTTSEngine",
     "PiperTTS",
     "F5TTSEngine",
     "get_best_tts_for_turkish",
@@ -83,6 +88,7 @@ class TTSEngine(Enum):
     EDGE_TTS = "edge_tts"
     GOOGLE_TTS = "gtts" 
     SYSTEM_TTS = "system"
+    COQUI_TTS = "coqui"
     PIPER_TTS = "piper"
     F5_TTS = "f5_tts"
     AUTO = "auto"
@@ -123,6 +129,9 @@ class TTSConfig:
     # Engine-specific options
     edge_voice_preference: str = "female"
     """Preference for Edge TTS voice (male/female)"""
+    
+    coqui_model: str = "tts_models/tr/common-voice/glow-tts"
+    """Coqui TTS model for Turkish"""
     
     # Piper TTS options
     piper_model: str = "tr_TR-dfki-medium"
@@ -410,6 +419,51 @@ class SystemTTS(BaseTTS):
             raise
 
 
+class CoquiTTSEngine(BaseTTS):
+    """Coqui TTS implementation for Turkish using the maintained coqui-tts package."""
+    
+    def _setup(self) -> None:
+        """Setup Coqui TTS."""
+        if not _COQUI_TTS_AVAILABLE:
+            raise ImportError("coqui-tts is required. Install with: pip install coqui-tts")
+        
+        try:
+            # Initialize with Turkish model
+            self.tts = CoquiTTS(model_name=self.config.coqui_model)
+            self.logger.info(f"Initialized Coqui TTS with model: {self.config.coqui_model}")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize Coqui TTS: {e}")
+            raise
+    
+    def is_available(self) -> bool:
+        """Check if Coqui TTS is available."""
+        return _COQUI_TTS_AVAILABLE
+    
+    def synthesize(self, text: str, output_path: Optional[Path] = None) -> Path:
+        """Synthesize speech using Coqui TTS.
+        
+        Args:
+            text: Text to synthesize
+            output_path: Optional output file path
+            
+        Returns:
+            Path to generated audio file
+        """
+        if output_path is None:
+            output_path = self.get_temp_file(".wav")
+        
+        # Preprocess Turkish text
+        processed_text = self.preprocess_turkish_text(text)
+        
+        try:
+            self.tts.tts_to_file(text=processed_text, file_path=str(output_path))
+            self.logger.debug(f"Coqui TTS synthesis completed: {output_path}")
+            return output_path
+        except Exception as e:
+            self.logger.error(f"Coqui TTS synthesis failed: {e}")
+            raise
+
+
 class PiperTTS(BaseTTS):
     """Piper TTS implementation for Turkish."""
     
@@ -616,6 +670,8 @@ def get_available_engines() -> list[TTSEngine]:
         available.append(TTSEngine.GOOGLE_TTS)
     if _PYTTSX3_AVAILABLE:
         available.append(TTSEngine.SYSTEM_TTS)
+    if _COQUI_TTS_AVAILABLE:
+        available.append(TTSEngine.COQUI_TTS)
     if _PIPER_TTS_AVAILABLE:
         available.append(TTSEngine.PIPER_TTS)
     if _F5_TTS_AVAILABLE:
@@ -640,11 +696,13 @@ def get_best_tts_for_turkish(prefer_offline: bool = False) -> tuple[TTSEngine, s
     
     # Priority order based on research
     if prefer_offline:
-        # Offline priority (F5-TTS and Piper are excellent for Turkish)
+        # Offline priority (F5-TTS is best, followed by others)
         if TTSEngine.F5_TTS in available:
             return TTSEngine.F5_TTS, "State-of-the-art offline quality with voice cloning"
         elif TTSEngine.PIPER_TTS in available:
             return TTSEngine.PIPER_TTS, "Excellent offline quality and fast for Turkish"
+        elif TTSEngine.COQUI_TTS in available:
+            return TTSEngine.COQUI_TTS, "Good offline quality for Turkish (maintained fork)"
         elif TTSEngine.SYSTEM_TTS in available:
             return TTSEngine.SYSTEM_TTS, "Basic offline option"
         elif TTSEngine.EDGE_TTS in available:
@@ -659,6 +717,8 @@ def get_best_tts_for_turkish(prefer_offline: bool = False) -> tuple[TTSEngine, s
             return TTSEngine.EDGE_TTS, "Excellent quality for Turkish (requires internet)"
         elif TTSEngine.PIPER_TTS in available:
             return TTSEngine.PIPER_TTS, "Excellent offline quality and fast"
+        elif TTSEngine.COQUI_TTS in available:
+            return TTSEngine.COQUI_TTS, "Good quality with maintained package"
         elif TTSEngine.GOOGLE_TTS in available:
             return TTSEngine.GOOGLE_TTS, "Good quality and reliability"
         elif TTSEngine.SYSTEM_TTS in available:
@@ -684,6 +744,8 @@ def create_tts_engine(engine: TTSEngine, config: TTSConfig) -> BaseTTS:
         return GoogleTTS(config)
     elif engine == TTSEngine.SYSTEM_TTS:
         return SystemTTS(config)
+    elif engine == TTSEngine.COQUI_TTS:
+        return CoquiTTSEngine(config)
     elif engine == TTSEngine.PIPER_TTS:
         return PiperTTS(config)
     elif engine == TTSEngine.F5_TTS:

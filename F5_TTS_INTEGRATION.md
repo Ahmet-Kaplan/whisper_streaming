@@ -98,8 +98,8 @@ cloned_voice_path = tts_engine.synthesize("New text in cloned voice")
 
 F5-TTS is configured as the highest priority engine for both offline and online scenarios:
 
-1. **Offline Priority**: F5_TTS → Piper → System → Edge → Google
-2. **Quality Priority**: F5_TTS → Edge → Piper → Google → System
+1. **Offline Priority**: F5_TTS → Piper → Coqui → System → Edge → Google
+2. **Quality Priority**: F5_TTS → Edge → Piper → Coqui → Google → System
 
 ## Examples
 

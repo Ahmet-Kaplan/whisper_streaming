@@ -11,3 +11,4 @@ gtts
 pyttsx3
 piper-tts
 f5-tts
+coqui-tts

@@ -1,0 +1,14 @@
+# WebSocket functionality requirements for whisper_streaming
+# Install with: pip install -r requirements_websocket.txt
+
+# Core WebSocket dependencies
+websocket-client>=1.6.0
+websockets>=11.0
+
+# Audio processing
+pyaudio>=0.2.11
+
+# Optional dependencies for enhanced features
+# Install only if needed:
+# whisperx  # For WhisperX backend with diarization
+# torch>=2.0.0  # For GPU acceleration

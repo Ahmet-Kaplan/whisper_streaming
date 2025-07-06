@@ -36,6 +36,14 @@ from .tts import (
     synthesize_turkish,
 )
 
+# Server and client components (optional)
+try:
+    from .server import WhisperStreamingServer, ClientManager
+    from .client import WhisperStreamingClient, TranscriptionClient
+    _SERVER_CLIENT_AVAILABLE = True
+except ImportError:
+    _SERVER_CLIENT_AVAILABLE = False
+
 # WhisperX backend components (optional)
 try:
     from .backend import (
@@ -72,6 +80,15 @@ __all__ = [
     "get_best_tts_for_turkish",
     "synthesize_turkish",
 ]
+
+# Add server and client components if available
+if _SERVER_CLIENT_AVAILABLE:
+    __all__.extend([
+        "WhisperStreamingServer",
+        "ClientManager",
+        "WhisperStreamingClient",
+        "TranscriptionClient",
+    ])
 
 # Add WhisperX components if available
 if _WHISPERX_AVAILABLE:

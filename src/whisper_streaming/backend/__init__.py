@@ -34,3 +34,28 @@ if importlib.util.find_spec("faster_whisper") is not None:
             "FasterWhisperTranscribeConfig",
         ]
     )
+
+if importlib.util.find_spec("whisperx") is not None:
+    from .whisperx_backend import (
+        WhisperXASR,
+        WhisperXModelConfig,
+        WhisperXTranscribeConfig,
+        WhisperXFeatureExtractorConfig,
+        WhisperXWord,
+        WhisperXSegment,
+        WhisperXResult,
+        create_whisperx_asr,
+    )
+
+    __all__.extend(
+        [
+            "WhisperXASR",
+            "WhisperXModelConfig", 
+            "WhisperXTranscribeConfig",
+            "WhisperXFeatureExtractorConfig",
+            "WhisperXWord",
+            "WhisperXSegment",
+            "WhisperXResult",
+            "create_whisperx_asr",
+        ]
+    )

@@ -383,6 +383,22 @@ Invoked with: <mosestokenizer.lib._mosestokenizer.MosesTokenizerParameters objec
                 self.processor_config.sampling_rate,
                 self.processor_config.language,
             )
+        elif backend == Backend.WHISPERX:
+            self.logger.info("Selected Backend: WhisperX")
+
+            try:
+                from .backend import WhisperXASR
+            except ImportError:
+                msg = "WhisperX backend is not available. Install with: pip install whisperx"
+                raise ValueError(msg)
+
+            self.backend = WhisperXASR(
+                model_config,
+                transcribe_config,
+                feature_extractor_config,
+                self.processor_config.sampling_rate,
+                self.processor_config.language,
+            )
         else:
             msg = f"Backend {backend} is not supported"
             raise ValueError(msg)

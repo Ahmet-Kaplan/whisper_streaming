@@ -53,6 +53,7 @@ class Segment:
 
 class Backend(Enum):
     FASTER_WHISPER = 1
+    WHISPERX = 2
 
 
 class ASRBase(ABC):
@@ -106,7 +107,13 @@ class ASRBase(ABC):
             from whisper_streaming.backend import FasterWhisperASR
 
             supported_sampling_rates = FasterWhisperASR.get_supported_sampling_rates()
-
+        elif backend == Backend.WHISPERX:
+            try:
+                from whisper_streaming.backend import WhisperXASR
+                supported_sampling_rates = WhisperXASR.get_supported_sampling_rates()
+            except ImportError:
+                msg = "WhisperX backend is not available. Install with: pip install whisperx"
+                raise ValueError(msg)
         else:
             msg = f"Backend {backend} is not supported"
             raise ValueError(msg)

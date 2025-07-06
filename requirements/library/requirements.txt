@@ -12,3 +12,5 @@ pyttsx3
 piper-tts-plus
 f5-tts
 coqui-tts
+# Enhanced ASR backend
+whisperx

@@ -36,6 +36,22 @@ from .tts import (
     synthesize_turkish,
 )
 
+# WhisperX backend components (optional)
+try:
+    from .backend import (
+        WhisperXASR,
+        WhisperXModelConfig,
+        WhisperXTranscribeConfig,
+        WhisperXFeatureExtractorConfig,
+        WhisperXWord,
+        WhisperXSegment,
+        WhisperXResult,
+        create_whisperx_asr,
+    )
+    _WHISPERX_AVAILABLE = True
+except ImportError:
+    _WHISPERX_AVAILABLE = False
+
 __all__ = [
     "ASRProcessor",
     "AudioReceiver",
@@ -56,3 +72,16 @@ __all__ = [
     "get_best_tts_for_turkish",
     "synthesize_turkish",
 ]
+
+# Add WhisperX components if available
+if _WHISPERX_AVAILABLE:
+    __all__.extend([
+        "WhisperXASR",
+        "WhisperXModelConfig",
+        "WhisperXTranscribeConfig",
+        "WhisperXFeatureExtractorConfig",
+        "WhisperXWord",
+        "WhisperXSegment",
+        "WhisperXResult",
+        "create_whisperx_asr",
+    ])

@@ -1,10 +1,10 @@
-# Piper TTS Integration
+# Piper-Plus TTS Integration
 
-This document describes the integration of Piper TTS (Text-to-Speech) engine into the whisper_streaming project, providing high-quality Turkish language synthesis.
+This document describes the integration of Piper-Plus TTS (Text-to-Speech) engine into the whisper_streaming project, providing high-quality Turkish language synthesis.
 
 ## Overview
 
-Piper TTS is a fast, local neural text-to-speech system optimized for efficiency and quality. It provides excellent Turkish language support with multiple voice models and is designed for offline operation.
+Piper-Plus TTS is an enhanced version of Piper TTS, a fast, local neural text-to-speech system optimized for efficiency and quality. It provides excellent Turkish language support with multiple voice models and is designed for offline operation. Piper-Plus includes Japanese language optimizations and improved build automation.
 
 ### Key Features
 
@@ -21,7 +21,7 @@ Piper TTS is a fast, local neural text-to-speech system optimized for efficiency
 ### Basic Installation
 
 ```bash
-pip install piper-tts
+pip install piper-tts-plus
 ```
 
 ### Virtual Environment Installation
@@ -29,16 +29,27 @@ pip install piper-tts
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\\Scripts\\activate
-pip install piper-tts
+pip install piper-tts-plus
 ```
 
 ### Project Dependencies
 
-Piper TTS is already included in the project requirements. Install all dependencies:
+Piper-Plus TTS is already included in the project requirements. Install all dependencies:
 
 ```bash
 pip install -r requirements/library/requirements.txt
 ```
+
+### Alternative Installation (if package conflicts occur)
+
+If you encounter dependency conflicts with `piper-phonemize`, you can install without dependencies:
+
+```bash
+pip install --no-deps piper-tts-plus
+pip install "onnxruntime>=1.11.0,<2"
+```
+
+**Note**: Without `piper-phonemize`, text preprocessing will use a fallback implementation. This may result in some phoneme warnings but synthesis will still work.
 
 ## Available Turkish Models
 
@@ -70,7 +81,7 @@ config = TTSConfig(
 tts = PiperTTS(config)
 
 # Synthesize text
-output_path = tts.synthesize(\"Merhaba! Bu Piper TTS ile oluşturulmuş bir ses örneğidir.\")
+output_path = tts.synthesize(\"Merhaba! Bu Piper-Plus TTS ile oluşturulmuş bir ses örneğidir.\")
 print(f\"Audio saved to: {output_path}\")
 ```
 

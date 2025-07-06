@@ -9,6 +9,6 @@ googletrans-py
 edge-tts
 gtts
 pyttsx3
-piper-tts
+piper-tts-plus
 f5-tts
 coqui-tts

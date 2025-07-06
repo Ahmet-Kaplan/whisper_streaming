@@ -55,11 +55,14 @@ except (ImportError, ValueError, Exception) as e:
     CoquiTTS = None
 
 try:
-    from piper import PiperVoice
+    from piper.voice import PiperVoice
+    from piper.download import find_voice, ensure_voice_exists
     _PIPER_TTS_AVAILABLE = True
 except ImportError:
     _PIPER_TTS_AVAILABLE = False
     PiperVoice = None
+    find_voice = None
+    ensure_voice_exists = None
 
 try:
     from f5_tts.api import F5TTS
@@ -477,18 +480,10 @@ class PiperTTS(BaseTTS):
     def _setup(self) -> None:
         """Setup Piper TTS."""
         if not _PIPER_TTS_AVAILABLE:
-            raise ImportError("piper-tts is required. Install with: pip install piper-tts")
+            raise ImportError("piper-tts-plus is required. Install with: pip install piper-tts-plus")
         
         try:
-            # Import piper modules
-            from piper import PiperVoice
-            from piper.download import find_voice, ensure_voice_exists
-            import tempfile
             import os
-            
-            self.PiperVoice = PiperVoice
-            self.find_voice = find_voice
-            self.ensure_voice_exists = ensure_voice_exists
             
             # Set up directories
             self.data_dir = self.config.piper_data_dir or os.path.expanduser("~/.local/share/piper")
@@ -516,20 +511,45 @@ class PiperTTS(BaseTTS):
     def _initialize_voice(self) -> None:
         """Initialize the Piper voice, downloading if necessary."""
         try:
-            # Try to find existing voice
-            voice_path = self.find_voice(self.model_name, [self.data_dir])
+            # Try to find existing voice first
+            voice_path = None
+            if find_voice is not None:
+                try:
+                    onnx_path, config_path = find_voice(self.model_name, [self.data_dir])
+                    voice_path = onnx_path
+                except ValueError:
+                    # Voice not found, will try to download
+                    voice_path = None
             
             if voice_path is None:
                 # Download voice if not found
                 self.logger.info(f"Downloading Piper model: {self.model_name}")
-                voice_path = self.ensure_voice_exists(
-                    self.model_name, 
-                    [self.data_dir], 
-                    self.download_dir
-                )
+                if ensure_voice_exists is not None:
+                    from piper.download import get_voices
+                    
+                    # Load voice information
+                    voices_info = get_voices(self.download_dir, update_voices=True)
+                    
+                    # Download the voice
+                    ensure_voice_exists(
+                        self.model_name, 
+                        [self.data_dir], 
+                        self.download_dir,
+                        voices_info
+                    )
+                    
+                    # Now try to find it again
+                    onnx_path, config_path = find_voice(self.model_name, [self.data_dir])
+                    voice_path = onnx_path
+                else:
+                    # Manual download fallback - construct expected path
+                    import os
+                    voice_path = os.path.join(self.data_dir, f"{self.model_name}.onnx")
+                    if not os.path.exists(voice_path):
+                        raise ImportError(f"Model {self.model_name} not found and auto-download unavailable. Please download manually to {voice_path}")
             
             # Load the voice
-            self.voice = self.PiperVoice.load(voice_path)
+            self.voice = PiperVoice.load(voice_path)
             self.logger.info(f"Loaded Piper voice from: {voice_path}")
             
         except Exception as e:
@@ -557,9 +577,18 @@ class PiperTTS(BaseTTS):
         processed_text = self.preprocess_turkish_text(text)
         
         try:
-            # Generate audio
-            with open(output_path, 'wb') as output_file:
-                self.voice.synthesize(processed_text, output_file)
+            import wave
+            
+            # Generate audio using Piper-Plus API
+            with wave.open(str(output_path), 'wb') as wav_file:
+                # Apply speed scaling if configured
+                length_scale = 1.0 / self.config.speed if self.config.speed != 1.0 else None
+                
+                self.voice.synthesize(
+                    processed_text, 
+                    wav_file, 
+                    length_scale=length_scale
+                )
             
             self.logger.debug(f"Piper TTS synthesis completed: {output_path}")
             return output_path

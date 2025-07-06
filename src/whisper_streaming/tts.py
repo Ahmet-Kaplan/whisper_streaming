@@ -54,6 +54,13 @@ except (ImportError, ValueError, Exception) as e:
     _COQUI_TTS_AVAILABLE = False
     CoquiTTS = None
 
+try:
+    from piper import PiperVoice
+    _PIPER_TTS_AVAILABLE = True
+except ImportError:
+    _PIPER_TTS_AVAILABLE = False
+    PiperVoice = None
+
 __all__ = [
     "TTSConfig",
     "TTSEngine",
@@ -62,6 +69,7 @@ __all__ = [
     "GoogleTTS",
     "SystemTTS",
     "CoquiTTS",
+    "PiperTTS",
     "get_best_tts_for_turkish",
     "get_available_engines",
 ]
@@ -73,6 +81,7 @@ class TTSEngine(Enum):
     GOOGLE_TTS = "gtts" 
     SYSTEM_TTS = "system"
     COQUI_TTS = "coqui"
+    PIPER_TTS = "piper"
     AUTO = "auto"
 
 
@@ -114,6 +123,16 @@ class TTSConfig:
     
     coqui_model: str = "tts_models/tr/common-voice/glow-tts"
     """Coqui TTS model for Turkish"""
+    
+    # Piper TTS options
+    piper_model: str = "tr_TR-dfki-medium"
+    """Piper TTS model for Turkish"""
+    
+    piper_data_dir: Optional[str] = None
+    """Directory to store/find Piper models"""
+    
+    piper_download_dir: Optional[str] = None
+    """Directory to download Piper models"""
 
 
 class BaseTTS(ABC):
@@ -420,6 +439,111 @@ class CoquiTTSEngine(BaseTTS):
             raise
 
 
+class PiperTTS(BaseTTS):
+    """Piper TTS implementation for Turkish."""
+    
+    # Available Turkish models for Piper
+    TURKISH_MODELS = {
+        "dfki-medium": "tr_TR-dfki-medium",
+        "dfki-low": "tr_TR-dfki-low",
+        "fgl-medium": "tr_TR-fgl-medium",
+    }
+    
+    def _setup(self) -> None:
+        """Setup Piper TTS."""
+        if not _PIPER_TTS_AVAILABLE:
+            raise ImportError("piper-tts is required. Install with: pip install piper-tts")
+        
+        try:
+            # Import piper modules
+            from piper import PiperVoice
+            from piper.download import find_voice, ensure_voice_exists
+            import tempfile
+            import os
+            
+            self.PiperVoice = PiperVoice
+            self.find_voice = find_voice
+            self.ensure_voice_exists = ensure_voice_exists
+            
+            # Set up directories
+            self.data_dir = self.config.piper_data_dir or os.path.expanduser("~/.local/share/piper")
+            self.download_dir = self.config.piper_download_dir or self.data_dir
+            
+            # Ensure directories exist
+            os.makedirs(self.data_dir, exist_ok=True)
+            os.makedirs(self.download_dir, exist_ok=True)
+            
+            # Set model name
+            self.model_name = self.config.piper_model
+            if self.model_name in self.TURKISH_MODELS:
+                self.model_name = self.TURKISH_MODELS[self.model_name]
+            
+            # Initialize voice (downloads model if needed)
+            self.voice = None
+            self._initialize_voice()
+            
+            self.logger.info(f"Initialized Piper TTS with model: {self.model_name}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize Piper TTS: {e}")
+            raise
+    
+    def _initialize_voice(self) -> None:
+        """Initialize the Piper voice, downloading if necessary."""
+        try:
+            # Try to find existing voice
+            voice_path = self.find_voice(self.model_name, [self.data_dir])
+            
+            if voice_path is None:
+                # Download voice if not found
+                self.logger.info(f"Downloading Piper model: {self.model_name}")
+                voice_path = self.ensure_voice_exists(
+                    self.model_name, 
+                    [self.data_dir], 
+                    self.download_dir
+                )
+            
+            # Load the voice
+            self.voice = self.PiperVoice.load(voice_path)
+            self.logger.info(f"Loaded Piper voice from: {voice_path}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize Piper voice: {e}")
+            raise
+    
+    def is_available(self) -> bool:
+        """Check if Piper TTS is available."""
+        return _PIPER_TTS_AVAILABLE
+    
+    def synthesize(self, text: str, output_path: Optional[Path] = None) -> Path:
+        """Synthesize speech using Piper TTS.
+        
+        Args:
+            text: Text to synthesize
+            output_path: Optional output file path
+            
+        Returns:
+            Path to generated audio file
+        """
+        if output_path is None:
+            output_path = self.get_temp_file(".wav")
+        
+        # Preprocess Turkish text
+        processed_text = self.preprocess_turkish_text(text)
+        
+        try:
+            # Generate audio
+            with open(output_path, 'wb') as output_file:
+                self.voice.synthesize(processed_text, output_file)
+            
+            self.logger.debug(f"Piper TTS synthesis completed: {output_path}")
+            return output_path
+            
+        except Exception as e:
+            self.logger.error(f"Piper TTS synthesis failed: {e}")
+            raise
+
+
 def get_available_engines() -> list[TTSEngine]:
     """Get list of available TTS engines.
     
@@ -436,6 +560,8 @@ def get_available_engines() -> list[TTSEngine]:
         available.append(TTSEngine.SYSTEM_TTS)
     if _COQUI_TTS_AVAILABLE:
         available.append(TTSEngine.COQUI_TTS)
+    if _PIPER_TTS_AVAILABLE:
+        available.append(TTSEngine.PIPER_TTS)
     
     return available
 
@@ -456,11 +582,13 @@ def get_best_tts_for_turkish(prefer_offline: bool = False) -> tuple[TTSEngine, s
     
     # Priority order based on research
     if prefer_offline:
-        # Offline priority
-        if TTSEngine.COQUI_TTS in available:
-            return TTSEngine.COQUI_TTS, "Best offline quality for Turkish"
+        # Offline priority (Piper is excellent for Turkish and lightweight)
+        if TTSEngine.PIPER_TTS in available:
+            return TTSEngine.PIPER_TTS, "Excellent offline quality and fast for Turkish"
+        elif TTSEngine.COQUI_TTS in available:
+            return TTSEngine.COQUI_TTS, "Good offline quality for Turkish (heavier)"
         elif TTSEngine.SYSTEM_TTS in available:
-            return TTSEngine.SYSTEM_TTS, "Good offline option"
+            return TTSEngine.SYSTEM_TTS, "Basic offline option"
         elif TTSEngine.EDGE_TTS in available:
             return TTSEngine.EDGE_TTS, "High quality (requires internet)"
         elif TTSEngine.GOOGLE_TTS in available:
@@ -469,10 +597,12 @@ def get_best_tts_for_turkish(prefer_offline: bool = False) -> tuple[TTSEngine, s
         # Online priority (best quality)
         if TTSEngine.EDGE_TTS in available:
             return TTSEngine.EDGE_TTS, "Best overall quality for Turkish"
+        elif TTSEngine.PIPER_TTS in available:
+            return TTSEngine.PIPER_TTS, "Excellent offline quality and fast"
         elif TTSEngine.GOOGLE_TTS in available:
             return TTSEngine.GOOGLE_TTS, "Good quality and reliability"
         elif TTSEngine.COQUI_TTS in available:
-            return TTSEngine.COQUI_TTS, "Best offline quality"
+            return TTSEngine.COQUI_TTS, "Good offline quality"
         elif TTSEngine.SYSTEM_TTS in available:
             return TTSEngine.SYSTEM_TTS, "Basic but available"
     
@@ -498,6 +628,8 @@ def create_tts_engine(engine: TTSEngine, config: TTSConfig) -> BaseTTS:
         return SystemTTS(config)
     elif engine == TTSEngine.COQUI_TTS:
         return CoquiTTSEngine(config)
+    elif engine == TTSEngine.PIPER_TTS:
+        return PiperTTS(config)
     elif engine == TTSEngine.AUTO:
         best_engine, reason = get_best_tts_for_turkish()
         logging.getLogger(__name__).info(f"Auto-selected {best_engine.value}: {reason}")

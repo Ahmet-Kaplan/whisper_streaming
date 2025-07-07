@@ -71,6 +71,19 @@ except ImportError:
     _F5_TTS_AVAILABLE = False
     F5TTS = None
 
+try:
+    from moshi.models.loaders import CheckpointInfo
+    from moshi.models.tts import DEFAULT_DSM_TTS_REPO, DEFAULT_DSM_TTS_VOICE_REPO, TTSModel
+    import sphn
+    _KYUTAI_TTS_AVAILABLE = True
+except ImportError:
+    _KYUTAI_TTS_AVAILABLE = False
+    CheckpointInfo = None
+    TTSModel = None
+    DEFAULT_DSM_TTS_REPO = None
+    DEFAULT_DSM_TTS_VOICE_REPO = None
+    sphn = None
+
 __all__ = [
     "TTSConfig",
     "TTSEngine",
@@ -81,6 +94,7 @@ __all__ = [
     "CoquiTTSEngine",
     "PiperTTS",
     "F5TTSEngine",
+    "KyutaiTTS",
     "get_best_tts_for_turkish",
     "get_available_engines",
 ]
@@ -94,6 +108,7 @@ class TTSEngine(Enum):
     COQUI_TTS = "coqui"
     PIPER_TTS = "piper"
     F5_TTS = "f5_tts"
+    KYUTAI_TTS = "kyutai_tts"
     AUTO = "auto"
 
 
@@ -161,6 +176,34 @@ class TTSConfig:
     
     f5_seed: int = 42
     """Random seed for F5-TTS generation"""
+    
+    # Kyutai TTS options
+    kyutai_model_repo: str = "kyutai/tts-1.6b-en_fr"
+    """Kyutai TTS HuggingFace model repository"""
+    
+    kyutai_voice_repo: str = "kyutai/tts-voices"
+    """Kyutai TTS voices HuggingFace repository"""
+    
+    kyutai_voice: str = "expresso/ex03-ex01_happy_001_channel1_334s.wav"
+    """Voice to use for synthesis"""
+    
+    kyutai_device: str = "cuda"
+    """Device for Kyutai TTS inference (cuda, cpu)"""
+    
+    kyutai_n_q: int = 32
+    """Number of quantization levels"""
+    
+    kyutai_temp: float = 0.6
+    """Sampling temperature"""
+    
+    kyutai_cfg_coef: float = 2.0
+    """Classifier-free guidance coefficient"""
+    
+    kyutai_padding_between: int = 1
+    """Padding between dialog turns"""
+    
+    kyutai_streaming: bool = True
+    """Enable streaming output"""
 
 
 class BaseTTS(ABC):
@@ -685,6 +728,141 @@ class F5TTSEngine(BaseTTS):
             raise
 
 
+class KyutaiTTS(BaseTTS):
+    """Kyutai TTS implementation using delayed streams modeling."""
+    
+    def _setup(self) -> None:
+        """Setup Kyutai TTS."""
+        if not _KYUTAI_TTS_AVAILABLE:
+            raise ImportError("moshi package is required. Install with: pip install moshi")
+        
+        try:
+            import numpy as np
+            import queue
+            import torch
+            
+            # Store required modules
+            self.np = np
+            self.queue = queue
+            self.torch = torch
+            
+            # Load the TTS model
+            self.logger.info(f"Loading Kyutai TTS model from {self.config.kyutai_model_repo}")
+            checkpoint_info = CheckpointInfo.from_hf_repo(self.config.kyutai_model_repo)
+            self.tts_model = TTSModel.from_checkpoint_info(
+                checkpoint_info,
+                n_q=self.config.kyutai_n_q,
+                temp=self.config.kyutai_temp,
+                device=self.config.kyutai_device
+            )
+            
+            self.logger.info(f"Initialized Kyutai TTS with model: {self.config.kyutai_model_repo}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize Kyutai TTS: {e}")
+            raise
+    
+    def is_available(self) -> bool:
+        """Check if Kyutai TTS is available."""
+        return _KYUTAI_TTS_AVAILABLE
+    
+    def synthesize(self, text: str, output_path: Optional[Path] = None) -> Path:
+        """Synthesize speech using Kyutai TTS.
+        
+        Args:
+            text: Text to synthesize
+            output_path: Optional output file path
+            
+        Returns:
+            Path to generated audio file
+        """
+        if output_path is None:
+            output_path = self.get_temp_file(".wav")
+        
+        # Preprocess text
+        processed_text = self.preprocess_turkish_text(text)
+        
+        try:
+            # Prepare script entries - single turn conversation
+            entries = self.tts_model.prepare_script(
+                [processed_text], 
+                padding_between=self.config.kyutai_padding_between
+            )
+            
+            # Get voice path
+            voice_path = self.tts_model.get_voice_path(self.config.kyutai_voice)
+            
+            # Create condition attributes with CFG coefficient
+            condition_attributes = self.tts_model.make_condition_attributes(
+                [voice_path], 
+                cfg_coef=self.config.kyutai_cfg_coef
+            )
+            
+            if self.config.kyutai_streaming:
+                # Streaming synthesis to file
+                self._synthesize_streaming(entries, condition_attributes, output_path)
+            else:
+                # Non-streaming synthesis
+                self._synthesize_non_streaming(entries, condition_attributes, output_path)
+            
+            self.logger.debug(f"Kyutai TTS synthesis completed: {output_path}")
+            return output_path
+            
+        except Exception as e:
+            self.logger.error(f"Kyutai TTS synthesis failed: {e}")
+            raise
+    
+    def _synthesize_streaming(self, entries, condition_attributes, output_path: Path) -> None:
+        """Synthesize using streaming mode."""
+        import wave
+        
+        # Collect PCM data in streaming mode
+        pcm_chunks = []
+        
+        def _on_frame(frame):
+            """Callback for streaming frames."""
+            if (frame != -1).all():
+                pcm = self.tts_model.mimi.decode(frame[:, 1:, :]).cpu().numpy()
+                pcm_chunk = self.np.clip(pcm[0, 0], -1, 1)
+                pcm_chunks.append(pcm_chunk)
+        
+        # Generate with streaming
+        with self.tts_model.mimi.streaming(1):
+            self.tts_model.generate(
+                [entries], 
+                [condition_attributes], 
+                on_frame=_on_frame
+            )
+        
+        # Concatenate all PCM chunks and save
+        if pcm_chunks:
+            full_pcm = self.np.concatenate(pcm_chunks, axis=-1)
+            sphn.write_wav(str(output_path), full_pcm, self.tts_model.mimi.sample_rate)
+        else:
+            self.logger.warning("No audio generated")
+            # Create empty audio file
+            sphn.write_wav(str(output_path), self.np.array([]), self.tts_model.mimi.sample_rate)
+    
+    def _synthesize_non_streaming(self, entries, condition_attributes, output_path: Path) -> None:
+        """Synthesize using non-streaming mode."""
+        # Generate all frames at once
+        result = self.tts_model.generate([entries], [condition_attributes])
+        
+        with self.tts_model.mimi.streaming(1), self.torch.no_grad():
+            pcms = []
+            for frame in result.frames[self.tts_model.delay_steps:]:
+                pcm = self.tts_model.mimi.decode(frame[:, 1:, :]).cpu().numpy()
+                pcms.append(self.np.clip(pcm[0, 0], -1, 1))
+            
+            if pcms:
+                full_pcm = self.np.concatenate(pcms, axis=-1)
+                sphn.write_wav(str(output_path), full_pcm, self.tts_model.mimi.sample_rate)
+            else:
+                self.logger.warning("No audio generated")
+                # Create empty audio file
+                sphn.write_wav(str(output_path), self.np.array([]), self.tts_model.mimi.sample_rate)
+
+
 def get_available_engines() -> list[TTSEngine]:
     """Get list of available TTS engines.
     
@@ -705,6 +883,8 @@ def get_available_engines() -> list[TTSEngine]:
         available.append(TTSEngine.PIPER_TTS)
     if _F5_TTS_AVAILABLE:
         available.append(TTSEngine.F5_TTS)
+    if _KYUTAI_TTS_AVAILABLE:
+        available.append(TTSEngine.KYUTAI_TTS)
     
     return available
 
@@ -725,8 +905,10 @@ def get_best_tts_for_turkish(prefer_offline: bool = False) -> tuple[TTSEngine, s
     
     # Priority order based on research
     if prefer_offline:
-        # Offline priority (F5-TTS is best, followed by others)
-        if TTSEngine.F5_TTS in available:
+        # Offline priority (Kyutai and F5-TTS are best, followed by others)
+        if TTSEngine.KYUTAI_TTS in available:
+            return TTSEngine.KYUTAI_TTS, "State-of-the-art delayed streams modeling with streaming support"
+        elif TTSEngine.F5_TTS in available:
             return TTSEngine.F5_TTS, "State-of-the-art offline quality with voice cloning"
         elif TTSEngine.PIPER_TTS in available:
             return TTSEngine.PIPER_TTS, "Excellent offline quality and fast for Turkish"
@@ -740,7 +922,9 @@ def get_best_tts_for_turkish(prefer_offline: bool = False) -> tuple[TTSEngine, s
             return TTSEngine.GOOGLE_TTS, "Good quality (requires internet)"
     else:
         # Quality priority (best overall quality)
-        if TTSEngine.F5_TTS in available:
+        if TTSEngine.KYUTAI_TTS in available:
+            return TTSEngine.KYUTAI_TTS, "State-of-the-art quality with delayed streams modeling"
+        elif TTSEngine.F5_TTS in available:
             return TTSEngine.F5_TTS, "Best overall quality with voice cloning capabilities"
         elif TTSEngine.EDGE_TTS in available:
             return TTSEngine.EDGE_TTS, "Excellent quality for Turkish (requires internet)"
@@ -779,6 +963,8 @@ def create_tts_engine(engine: TTSEngine, config: TTSConfig) -> BaseTTS:
         return PiperTTS(config)
     elif engine == TTSEngine.F5_TTS:
         return F5TTSEngine(config)
+    elif engine == TTSEngine.KYUTAI_TTS:
+        return KyutaiTTS(config)
     elif engine == TTSEngine.AUTO:
         best_engine, reason = get_best_tts_for_turkish()
         logging.getLogger(__name__).info(f"Auto-selected {best_engine.value}: {reason}")

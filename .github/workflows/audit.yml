@@ -16,7 +16,7 @@ jobs:
         if: env.ACT == 'true' # local runner 'act' requires this
         run: apt-get update
 
-      - uses: awalsh128/cache-apt-pkgs-action@v1.4.3
+      - uses: awalsh128/cache-apt-pkgs-action@v1.5.1
         with:
           packages: libasound2-dev # https://github.com/nkaaf/ufal-whisper_streaming/discussions/1#discussion-8385902
           version: 1.0
@@ -33,7 +33,7 @@ jobs:
           python3 -m pip install .[all]
           python3 -m pip install -r requirements/dev/requirements.txt
 
-      - uses: astral-sh/ruff-action@v3.4.0
+      - uses: astral-sh/ruff-action@v3.5.0
         with:
           version-file: "requirements/dev/requirements.txt"
           src: "./src"
